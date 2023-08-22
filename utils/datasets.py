@@ -30,6 +30,8 @@ from utils.general import check_requirements, xyxy2xywh, xywh2xyxy, xywhn2xyxy, 
     resample_segments, clean_str
 from utils.torch_utils import torch_distributed_zero_first
 
+import re
+
 # Parameters
 help_url = 'https://github.com/ultralytics/yolov5/wiki/Train-Custom-Data'
 img_formats = ['bmp', 'jpg', 'jpeg', 'png', 'tif', 'tiff', 'dng', 'webp', 'mpo']  # acceptable image suffixes
@@ -364,6 +366,8 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
         self.path = path        
         #self.albumentations = Albumentations() if augment else None
 
+        self.seq_len = 5
+
         try:
             f = []  # image files
             for p in path if isinstance(path, list) else [path]:
@@ -379,14 +383,16 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
                         # f += [p.parent / x.lstrip(os.sep) for x in t]  # local to global path (pathlib)
                 else:
                     raise Exception(f'{prefix}{p} does not exist')
-            self.img_files = sorted([x.replace('/', os.sep) for x in f if x.split('.')[-1].lower() in img_formats])
-            # self.img_files = sorted([x for x in f if x.suffix[1:].lower() in img_formats])  # pathlib
+            # self.img_files = sorted([x.replace('/', os.sep) for x in f if x.split('.')[-1].lower() in img_formats])
+            self.img_files = sorted([x.replace('/', os.sep) for x in f if x.split('.')[-1].lower() in img_formats], key=lambda i: int(re.sub('\D', '', i)))
+           
             assert self.img_files, f'{prefix}No images found'
         except Exception as e:
             raise Exception(f'{prefix}Error loading data from {path}: {e}\nSee {help_url}')
 
         # Check cache
         self.label_files = img2label_paths(self.img_files)  # labels
+
         cache_path = (p if p.is_file() else Path(self.label_files[0]).parent).with_suffix('.cache')  # cached labels
         if cache_path.is_file():
             cache, exists = torch.load(cache_path), True  # load
@@ -523,7 +529,7 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
         return x
 
     def __len__(self):
-        return len(self.img_files)
+        return len(self.img_files) - self.seq_len
 
     # def __iter__(self):
     #     self.count = -1
@@ -533,6 +539,7 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
 
     def __getitem__(self, index):
         index = self.indices[index]  # linear, shuffled, or image_weights
+        aug_index = None
 
         hyp = self.hyp
         mosaic = self.mosaic and random.random() < hyp['mosaic']
@@ -556,65 +563,63 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
 
         else:
             # Load image
-            img, (h0, w0), (h, w) = load_image(self, index)
+            txt_index = index + self.seq_len
+            imgs, (h0, w0), (h, w) = load_images(self, index)
 
             # Letterbox
             shape = self.batch_shapes[self.batch[index]] if self.rect else self.img_size  # final letterboxed shape
-            img, ratio, pad = letterbox(img, shape, auto=False, scaleup=self.augment)
+  
+            for i, im in enumerate(imgs):
+                imgs[i], ratio, pad = letterbox(imgs[i], shape, auto=False, scaleup=self.augment)
+                # letterboxed_imgs.append(img)
             shapes = (h0, w0), ((h / h0, w / w0), pad)  # for COCO mAP rescaling
 
-            labels = self.labels[index].copy()
+            labels = self.labels[txt_index].copy()
             if labels.size:  # normalized xywh to pixel xyxy format
                 labels[:, 1:] = xywhn2xyxy(labels[:, 1:], ratio[0] * w, ratio[1] * h, padw=pad[0], padh=pad[1])
 
         if self.augment:
             # Augment imagespace
             if not mosaic:
-                img, labels = random_perspective(img, labels,
-                                                 degrees=hyp['degrees'],
-                                                 translate=hyp['translate'],
-                                                 scale=hyp['scale'],
-                                                 shear=hyp['shear'],
-                                                 perspective=hyp['perspective'])
-            
-            
-            #img, labels = self.albumentations(img, labels)
+                for i,im in enumerate(imgs):
+                    if i != self.seq_len -1:
+                        imgs[i], _ = random_perspective(im, np.empty([1, 5]),
+                                                    degrees=hyp['degrees'],
+                                                    translate=hyp['translate'],
+                                                    scale=hyp['scale'],
+                                                    shear=hyp['shear'],
+                                                    perspective=hyp['perspective'])
+                    else:
+                        imgs[i], labels = random_perspective(im, labels,
+                                                    degrees=hyp['degrees'],
+                                                    translate=hyp['translate'],
+                                                    scale=hyp['scale'],
+                                                    shear=hyp['shear'],
+                                                    perspective=hyp['perspective'])
 
             # Augment colorspace
-            augment_hsv(img, hgain=hyp['hsv_h'], sgain=hyp['hsv_s'], vgain=hyp['hsv_v'])
-
-            # Apply cutouts
-            # if random.random() < 0.9:
-            #     labels = cutout(img, labels)
-            
-            if random.random() < hyp['paste_in']:
-                sample_labels, sample_images, sample_masks = [], [], [] 
-                while len(sample_labels) < 30:
-                    sample_labels_, sample_images_, sample_masks_ = load_samples(self, random.randint(0, len(self.labels) - 1))
-                    sample_labels += sample_labels_
-                    sample_images += sample_images_
-                    sample_masks += sample_masks_
-                    #print(len(sample_labels))
-                    if len(sample_labels) == 0:
-                        break
-                labels = pastein(img, labels, sample_labels, sample_images, sample_masks)
+            for i,im in enumerate(imgs):
+                augment_hsv(imgs[i], hgain=hyp['hsv_h'], sgain=hyp['hsv_s'], vgain=hyp['hsv_v'])
 
         nL = len(labels)  # number of labels
         if nL:
             labels[:, 1:5] = xyxy2xywh(labels[:, 1:5])  # convert xyxy to xywh
-            labels[:, [2, 4]] /= img.shape[0]  # normalized height 0-1
-            labels[:, [1, 3]] /= img.shape[1]  # normalized width 0-1
+            labels[:, [2, 4]] /= imgs[0].shape[0]  # normalized height 0-1
+            labels[:, [1, 3]] /= imgs[0].shape[1]  # normalized width 0-1
 
         if self.augment:
+            # aug_index = index
             # flip up-down
             if random.random() < hyp['flipud']:
-                img = np.flipud(img)
+                for i,im in enumerate(imgs):
+                    imgs[i] = np.flipud(im)
                 if nL:
                     labels[:, 2] = 1 - labels[:, 2]
 
             # flip left-right
             if random.random() < hyp['fliplr']:
-                img = np.fliplr(img)
+                for i,im in enumerate(imgs):
+                    imgs[i] = np.fliplr(im)
                 if nL:
                     labels[:, 1] = 1 - labels[:, 1]
 
@@ -622,19 +627,28 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
         if nL:
             labels_out[:, 1:] = torch.from_numpy(labels)
 
-        # Convert
-        img = img[:, :, ::-1].transpose(2, 0, 1)  # BGR to RGB, to 3x416x416
-        img = np.ascontiguousarray(img)
+        ## Test last image and its labels bore moving forward
+        # if aug_index is not None:
+        #     for i,im in enumerate(imgs):
+        #         cv2.imwrite(f'/home/dinusha/yolov7/data/dataset/test_imgs/test_{i}.jpg', im)
+        #         with open(f'/home/dinusha/yolov7/data/dataset/test_imgs/test_{i}.txt', 'w') as f:
+        #             f.write(str(labels) + '\n')
 
-        return torch.from_numpy(img), labels_out, self.img_files[index], shapes
+        # Convert
+        for i,im in enumerate(imgs):
+            imgs[i] = imgs[i][:, :, ::-1].transpose(2, 0, 1)
+            imgs[i] = np.ascontiguousarray(imgs[i])
+            imgs[i] = torch.from_numpy(imgs[i])
+
+        return torch.stack(imgs, 1), labels_out, self.img_files[index], shapes
 
     @staticmethod
     def collate_fn(batch):
-        img, label, path, shapes = zip(*batch)  # transposed
+        imgs, label, path, shapes = zip(*batch)  # transposed
         for i, l in enumerate(label):
             l[:, 0] = i  # add target image index for build_targets()
-        return torch.stack(img, 0), torch.cat(label, 0), path, shapes
-
+        return torch.stack(imgs), torch.cat(label, 0), path, shapes
+    
     @staticmethod
     def collate_fn4(batch):
         img, label, path, shapes = zip(*batch)  # transposed
@@ -663,6 +677,7 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
 
 
 # Ancillary functions --------------------------------------------------------------------------------------------------
+
 def load_image(self, index):
     # loads 1 image from dataset, returns img, original hw, resized hw
     img = self.imgs[index]
@@ -679,6 +694,33 @@ def load_image(self, index):
     else:
         return self.imgs[index], self.img_hw0[index], self.img_hw[index]  # img, hw_original, hw_resized
 
+def load_images(self, index):
+        idxs = range(index  , index+self.seq_len)
+        imgs_ = []
+        HW0 = 0
+        HW = 0
+        last_idx = idxs[-1]
+
+        for id in idxs:
+            img = self.imgs[id]
+            if img is None:  # not cached
+                path = self.img_files[id]
+                img = cv2.imread(path)  # BGR
+                assert img is not None, 'Image Not Found ' + path
+                h0, w0 = img.shape[:2]  # orig hw
+                r = self.img_size / max(h0, w0)  # resize image to img_size
+                if r != 1:  # always resize down, only resize up if training with augmentation
+                    interp = cv2.INTER_AREA if r < 1 and not self.augment else cv2.INTER_LINEAR
+                    img = cv2.resize(img, (int(w0 * r), int(h0 * r)), interpolation=interp)
+                if id == last_idx:
+                    HW0, HW = (h0, w0), img.shape[:2]  
+                imgs_.append(img)
+            else:
+                if id == last_idx:
+                    HW0,HW = self.img_hw0[last_idx], self.img_hw[last_idx]
+                imgs_.append(self.imgs[id])
+
+        return imgs_, HW0, HW
 
 def augment_hsv(img, hgain=0.5, sgain=0.5, vgain=0.5):
     r = np.random.uniform(-1, 1, 3) * [hgain, sgain, vgain] + 1  # random gains
