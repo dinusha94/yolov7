@@ -541,7 +541,7 @@ class Model(nn.Module):
             # print('Strides: %s' % m.stride.tolist())
         if isinstance(m, IDetect):
             s = 256  # 2x min stride
-            m.stride = torch.tensor([s / x.shape[-2] for x in self.forward(torch.zeros(1, ch, s, s))])  # forward
+            m.stride = torch.tensor([s / x.shape[-2] for x in self.forward([torch.zeros(1, ch, s, s),torch.zeros(1, ch, s, s),torch.zeros(1, ch, s, s),torch.zeros(1, ch, s, s),torch.zeros(1, ch, s, s)]) ])  # forward
             check_anchor_order(m)
             m.anchors /= m.stride.view(-1, 1, 1)
             self.stride = m.stride
@@ -599,6 +599,7 @@ class Model(nn.Module):
             return self.forward_once(x, profile)  # single-scale inference, train
 
     def forward_once(self, x, profile=False):
+        # print('aaaaaaaaaaaa', x.shape)
         y, dt = [], []  # outputs
         for m in self.model:
             if m.f != -1:  # if not from previous layer
@@ -742,6 +743,8 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
     layers, save, c2 = [], [], ch[-1]  # layers, savelist, ch out
     for i, (f, n, m, args) in enumerate(d['backbone'] + d['head']):  # from, number, module, args
         m = eval(m) if isinstance(m, str) else m  # eval strings
+
+        # print(f, n, m, args)
         for j, a in enumerate(args):
             try:
                 args[j] = eval(a) if isinstance(a, str) else a  # eval strings
@@ -805,6 +808,7 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
         np = sum([x.numel() for x in m_.parameters()])  # number params
         m_.i, m_.f, m_.type, m_.np = i, f, t, np  # attach index, 'from' index, type, number params
         logger.info('%3s%18s%3s%10.0f  %-40s%-30s' % (i, f, n, np, t, args))  # print
+        # print(('%3s%18s%3s%10.0f  %-40s%-30s' % (i, f, n, np, t, args)))
         save.extend(x % i for x in ([f] if isinstance(f, int) else f) if x != -1)  # append to savelist
         layers.append(m_)
         if i == 0:
@@ -828,7 +832,12 @@ if __name__ == '__main__':
     model.train()
     
     if opt.profile:
-        img = torch.rand(1, 3, 640, 640).to(device)
+        # img = torch.rand(1, 3, 640, 640).to(device)
+        img = [torch.rand(1, 3, 640, 640).to(device),
+        torch.rand(1, 3, 640, 640).to(device), 
+         torch.rand(1, 3, 640, 640).to(device), 
+          torch.rand(1, 3, 640, 640).to(device), 
+           torch.rand(1, 3, 640, 640).to(device)]
         y = model(img, profile=True)
 
     # Profile
