@@ -114,6 +114,10 @@ class Conv(nn.Module):
 class CoFusion(nn.Module):
     def __init__(self, in_ch, out_ch):
         super(CoFusion, self).__init__()
+
+        self.conv0 =  nn.Conv2d(3, 32, kernel_size=3,
+            stride=1, padding=1)
+        
         self.conv1 = nn.Conv2d(in_ch, 64, kernel_size=3,
             stride=1, padding=1)
         self.conv2 = nn.Conv2d(64, 64, kernel_size=3,
@@ -128,17 +132,24 @@ class CoFusion(nn.Module):
 
     def forward(self, x):
         fusecat = torch.cat(x, dim=1)
-        # print('0',fusecat.shape)
         attn = self.relu(self.norm_layer1(self.conv1(fusecat)))
-        # print('a', attn.shape)
         attn = self.relu(self.norm_layer2(self.conv2(attn)))
-        # print('b', attn.shape)
         attn = F.softmax(self.conv3(attn), dim=1)
-        # print('c', attn.shape)
-        
         return attn
     
+class SeqFusion(nn.Module):
+    def __init__(self, c1, c2, k=1, s=1, seq_len=4):
+        super(SeqFusion, self).__init__()
+        self.seq_len = seq_len
+        self.con_s1 = Conv(c1, c2, k, s)
+        self.con_s2 = Conv(c1, c2, k, s)
+        self.con_s3 = Conv(c1, c2, k, s)
+        self.con_s4 = Conv(c1, c2, k, s)
+        self.cat = Concat(1)
 
+    def forward(self, x):        
+        return self.cat([self.con_s1(x[0]), self.con_s2(x[1]), self.con_s3(x[2]), self.con_s4(x[3])])
+    
 class RobustConv(nn.Module):
     # Robust convolution (use high kernel size 7-11 for: downsampling and other layers). Train for 300 - 450 epochs.
     def __init__(self, c1, c2, k=7, s=1, p=None, g=1, act=True, layer_scale_init_value=1e-6):  # ch_in, ch_out, kernel, stride, padding, groups

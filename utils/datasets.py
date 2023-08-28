@@ -366,7 +366,7 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
         self.path = path        
         #self.albumentations = Albumentations() if augment else None
 
-        self.seq_len = 5
+        self.seq_len = 4
 
         try:
             f = []  # image files

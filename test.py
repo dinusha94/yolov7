@@ -105,7 +105,7 @@ def test(data,
         img_ = img_.to(device, non_blocking=True) # [:,:,-1,:,:]
         img_ = img_.half() if half else img_.float()  # uint8 to fp16/32
         img_ /= 255.0  # 0 - 255 to 0.0 - 1.0
-        img = [img_[:,:,i,:,:] for i in range(0,5)]
+        img = [img_[:,:,i,:,:] for i in range(0,4)]
 
         targets = targets.to(device)
         nb, _, height, width = img[-1].shape  # batch size, channels, height, width
