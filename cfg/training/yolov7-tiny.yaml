@@ -15,8 +15,10 @@ backbone:
 
   [
     ## TODO: add cofution blocks
-   [-1, 1, CoFusion, [15, 3]], 
-
+   #[-1, 1, CoFusion, [15, 3]], 
+     [-1, 1, Conv, [4, 3, 1, None, 1, nn.LeakyReLU(0.1)]],
+    [-1, 1, Conv, [8, 3, 1, None, 1, nn.LeakyReLU(0.1)]],  
+    [-1, 1, Conv, [16, 3, 1, None, 1, nn.LeakyReLU(0.1)]],  
    [-1, 1, Conv, [32, 3, 2, None, 1, nn.LeakyReLU(0.1)]],  # 0-P1/2  
   
    [-1, 1, Conv, [64, 3, 2, None, 1, nn.LeakyReLU(0.1)]],  # 1-P2/4    

@@ -105,7 +105,8 @@ def test(data,
         img_ = img_.to(device, non_blocking=True) # [:,:,-1,:,:]
         img_ = img_.half() if half else img_.float()  # uint8 to fp16/32
         img_ /= 255.0  # 0 - 255 to 0.0 - 1.0
-        img = [img_[:,:,i,:,:] for i in range(0,4)]
+        # img = [img_[:,:,i,:,:] for i in range(0,4)]
+        img = img_[:,:,-1,:,:] 
 
         targets = targets.to(device)
         nb, _, height, width = img[-1].shape  # batch size, channels, height, width
@@ -142,7 +143,7 @@ def test(data,
 
             # Predictions
             predn = pred.clone()
-            scale_coords(img[-1][si].shape[1:], predn[:, :4], shapes[si][0], shapes[si][1])  # native-space pred
+            scale_coords(img[si].shape[1:], predn[:, :4], shapes[si][0], shapes[si][1])  # native-space pred
 
             # Append to text file
             if save_txt:
@@ -185,7 +186,7 @@ def test(data,
 
                 # target boxes
                 tbox = xywh2xyxy(labels[:, 1:5])
-                scale_coords(img[-1][si].shape[1:], tbox, shapes[si][0], shapes[si][1])  # native-space labels
+                scale_coords(img[si].shape[1:], tbox, shapes[si][0], shapes[si][1])  # native-space labels
                 if plots:
                     confusion_matrix.process_batch(predn, torch.cat((labels[:, 0:1], tbox), 1))
 
@@ -216,9 +217,9 @@ def test(data,
         # Plot images
         if plots and batch_i < 3:
             f = save_dir / f'test_batch{batch_i}_labels.jpg'  # labels
-            Thread(target=plot_images, args=(img[-1], targets, paths, f, names), daemon=True).start()
+            Thread(target=plot_images, args=(img, targets, paths, f, names), daemon=True).start()
             f = save_dir / f'test_batch{batch_i}_pred.jpg'  # predictions
-            Thread(target=plot_images, args=(img[-1], output_to_target(out), paths, f, names), daemon=True).start()
+            Thread(target=plot_images, args=(img, output_to_target(out), paths, f, names), daemon=True).start()
 
     # Compute statistics
     stats = [np.concatenate(x, 0) for x in zip(*stats)]  # to numpy

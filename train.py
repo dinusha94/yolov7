@@ -93,86 +93,86 @@ def train(hyp, opt, device, tb_writer=None):
             iniordered_dict.update({item_key: item_val})
             iniordered_dict.move_to_end(item_key, last=False)
 
-        custom_state_dict = ckpt['model'].float().state_dict().copy()
+        # custom_state_dict = ckpt['model'].float().state_dict().copy()
 
-        new_keys = [
-            'model.0.con_s1.conv.weight',
-            'model.0.con_s1.bn.weight', 
-            'model.0.con_s1.bn.bias', 
-            'model.0.con_s1.bn.running_mean', 
-            'model.0.con_s1.bn.running_var', 
+        # new_keys = [
+        #     'model.0.con_s1.conv.weight',
+        #     'model.0.con_s1.bn.weight', 
+        #     'model.0.con_s1.bn.bias', 
+        #     'model.0.con_s1.bn.running_mean', 
+        #     'model.0.con_s1.bn.running_var', 
             
-            'model.0.con_s2.conv.weight', 
-            'model.0.con_s2.bn.weight', 
-            'model.0.con_s2.bn.bias', 
-            'model.0.con_s2.bn.running_mean', 
-            'model.0.con_s2.bn.running_var',
+        #     'model.0.con_s2.conv.weight', 
+        #     'model.0.con_s2.bn.weight', 
+        #     'model.0.con_s2.bn.bias', 
+        #     'model.0.con_s2.bn.running_mean', 
+        #     'model.0.con_s2.bn.running_var',
 
-            'model.0.con_s3.conv.weight', 
-            'model.0.con_s3.bn.weight', 
-            'model.0.con_s3.bn.bias', 
-            'model.0.con_s3.bn.running_mean', 
-            'model.0.con_s3.bn.running_var', 
+        #     'model.0.con_s3.conv.weight', 
+        #     'model.0.con_s3.bn.weight', 
+        #     'model.0.con_s3.bn.bias', 
+        #     'model.0.con_s3.bn.running_mean', 
+        #     'model.0.con_s3.bn.running_var', 
             
-            'model.0.con_s4.conv.weight', 
-            'model.0.con_s4.bn.weight', 
-            'model.0.con_s4.bn.bias', 
-            'model.0.con_s4.bn.running_mean', 
-            'model.0.con_s4.bn.running_var']
+        #     'model.0.con_s4.conv.weight', 
+        #     'model.0.con_s4.bn.weight', 
+        #     'model.0.con_s4.bn.bias', 
+        #     'model.0.con_s4.bn.running_mean', 
+        #     'model.0.con_s4.bn.running_var']
 
 
-        for k,v in ckpt['model'].state_dict().items():
-            if k.find('model.0.') != -1:
-                # print(k)
-                if k.find('model.0.conv.weight') != -1:
-                    i = 0
-                    # add the new weights to the seqfution conv layers
-                    for key in new_keys:
-                        if key.find('conv.weight') != -1:
-                            i+=1
-                            add_item(custom_state_dict, key, v[8*(i-1):i*8, : , : , :])
-                    custom_state_dict.pop(k)
+        # for k,v in ckpt['model'].state_dict().items():
+        #     if k.find('model.0.') != -1:
+        #         # print(k)
+        #         if k.find('model.0.conv.weight') != -1:
+        #             i = 0
+        #             # add the new weights to the seqfution conv layers
+        #             for key in new_keys:
+        #                 if key.find('conv.weight') != -1:
+        #                     i+=1
+        #                     add_item(custom_state_dict, key, v[8*(i-1):i*8, : , : , :])
+        #             custom_state_dict.pop(k)
 
-                elif k.find('model.0.bn.weight') != -1:
-                    i = 0
-                    for key in new_keys:
-                        if key.find('bn.weight') != -1:
-                            i+=1
-                            add_item(custom_state_dict, key, v[8*(i-1):8*i])
-                    custom_state_dict.pop(k)
+        #         elif k.find('model.0.bn.weight') != -1:
+        #             i = 0
+        #             for key in new_keys:
+        #                 if key.find('bn.weight') != -1:
+        #                     i+=1
+        #                     add_item(custom_state_dict, key, v[8*(i-1):8*i])
+        #             custom_state_dict.pop(k)
 
-                elif k.find('model.0.bn.bias') != -1:
-                    i = 0
-                    for key in new_keys:
-                        if key.find('bn.bias') != -1:
-                            i+=1
-                            add_item(custom_state_dict, key, v[8*(i-1):8*i])
+        #         elif k.find('model.0.bn.bias') != -1:
+        #             i = 0
+        #             for key in new_keys:
+        #                 if key.find('bn.bias') != -1:
+        #                     i+=1
+        #                     add_item(custom_state_dict, key, v[8*(i-1):8*i])
 
-                    custom_state_dict.pop(k)
+        #             custom_state_dict.pop(k)
 
-                elif k.find('model.0.bn.running_mean') != -1:
-                    i = 0
-                    for key in new_keys:
-                        if key.find('bn.running_mean') != -1:
-                            i+=1
-                            add_item(custom_state_dict, key, v[8*(i-1):8*i])
-                    custom_state_dict.pop(k)
+        #         elif k.find('model.0.bn.running_mean') != -1:
+        #             i = 0
+        #             for key in new_keys:
+        #                 if key.find('bn.running_mean') != -1:
+        #                     i+=1
+        #                     add_item(custom_state_dict, key, v[8*(i-1):8*i])
+        #             custom_state_dict.pop(k)
 
-                elif k.find('model.0.bn.running_var') != -1:
-                    i = 0
-                    for key in new_keys:
-                        if key.find('bn.running_var') != -1:
-                            i+=1
-                            add_item(custom_state_dict, key, v[8*(i-1):8*i])
-                    custom_state_dict.pop(k)
+        #         elif k.find('model.0.bn.running_var') != -1:
+        #             i = 0
+        #             for key in new_keys:
+        #                 if key.find('bn.running_var') != -1:
+        #                     i+=1
+        #                     add_item(custom_state_dict, key, v[8*(i-1):8*i])
+        #             custom_state_dict.pop(k)
 
-                elif k.find('model.0.bn.num_batches_tracked') != -1:
-                    custom_state_dict.pop(k)
+        #         elif k.find('model.0.bn.num_batches_tracked') != -1:
+        #             custom_state_dict.pop(k)
 
 
-        # state_dict = ckpt['model'].float().state_dict()  # to FP32
-        # state_dict = intersect_dicts(state_dict, model.state_dict(), exclude=exclude)  # intersect
-        state_dict = intersect_dicts(custom_state_dict, model.state_dict(), exclude=exclude)  # intersect
+        state_dict = ckpt['model'].float().state_dict()  # to FP32
+        state_dict = intersect_dicts(state_dict, model.state_dict(), exclude=exclude)  # intersect
+        # state_dict = intersect_dicts(custom_state_dict, model.state_dict(), exclude=exclude)  # intersect
 
         model.load_state_dict(state_dict, strict=False)  # load
         logger.info('Transferred %g/%g items from %s' % (len(state_dict), len(model.state_dict()), weights))  # report
@@ -421,7 +421,8 @@ def train(hyp, opt, device, tb_writer=None):
         for i, (imgs_, targets, paths, _) in pbar:  # batch -------------------------------------------------------------
             ni = i + nb * epoch  # number integrated batches (since train start)
             imgs_ = (imgs_.to(device, non_blocking=True).float() / 255.0) #[:,:,-1,:,:]  # uint8 to float32, 0-255 to 0.0-1.0
-            imgs = [imgs_[:,:,i,:,:] for i in range(0,4)]
+            # imgs = [imgs_[:,:,i,:,:] for i in range(0,4)]
+            imgs = imgs_[:,:,-1,:,:] 
 
             # Warmup
             if ni <= nw:
@@ -476,7 +477,7 @@ def train(hyp, opt, device, tb_writer=None):
                 # Plot
                 if plots and ni < 10:
                     f = save_dir / f'train_batch{ni}.jpg'  # filename
-                    Thread(target=plot_images, args=(imgs[-1], targets, paths, f), daemon=True).start()
+                    Thread(target=plot_images, args=(imgs, targets, paths, f), daemon=True).start()
                     # if tb_writer:
                     #     tb_writer.add_image(f, result, dataformats='HWC', global_step=epoch)
                     #     tb_writer.add_graph(torch.jit.trace(model, imgs, strict=False), [])  # add model graph
