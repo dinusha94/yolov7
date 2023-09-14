@@ -348,8 +348,9 @@ class LoadStreams:  # multiple IP or RTSP cameras
 
 def img2label_paths(img_paths):
     # Define label paths as a function of image paths
-    sa, sb = os.sep + 'images' + os.sep, os.sep + 'labels' + os.sep  # /images/, /labels/ substrings
-    return ['txt'.join(x.replace(sa, sb, 1).rsplit(x.split('.')[-1], 1)) for x in img_paths]
+    # sa, sb = os.sep + 'images' + os.sep, os.sep + 'labels' + os.sep  # /images/, /labels/ substrings
+    # return ['txt'.join(x.replace(sa, sb, 1).rsplit(x.split('.')[-1], 1)) for x in img_paths]
+    return [f"{x}{x.split('/')[-2]}.txt" for x in img_paths]
 
 
 class LoadImagesAndLabels(Dataset):  # for training/testing
@@ -373,7 +374,8 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
             for p in path if isinstance(path, list) else [path]:
                 p = Path(p)  # os-agnostic
                 if p.is_dir():  # dir
-                    f += glob.glob(str(p / '**' / '*.*'), recursive=True)
+                    # f += glob.glob(str(p / '**' / '*.*'), recursive=True)
+                    f += glob.glob(f"{str(p)}/*/", recursive=True)
                     # f = list(p.rglob('**/*.*'))  # pathlib
                 elif p.is_file():  # file
                     with open(p, 'r') as t:
@@ -384,7 +386,9 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
                 else:
                     raise Exception(f'{prefix}{p} does not exist')
             # self.img_files = sorted([x.replace('/', os.sep) for x in f if x.split('.')[-1].lower() in img_formats])
-            self.img_files = sorted([x.replace('/', os.sep) for x in f if x.split('.')[-1].lower() in img_formats], key=lambda i: int(re.sub('\D', '', i)))
+            # self.img_files = sorted([x.replace('/', os.sep) for x in f if x.split('.')[-1].lower() in img_formats], key=lambda i: int(re.sub('\D', '', i)))
+            self.img_files = sorted(f, key=lambda i: int(re.sub('\D', '', i)))
+            # print(self.img_files)
            
             assert self.img_files, f'{prefix}No images found'
         except Exception as e:
@@ -481,12 +485,15 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
         for i, (im_file, lb_file) in enumerate(pbar):
             try:
                 # verify images
-                im = Image.open(im_file)
-                im.verify()  # PIL verify
-                shape = exif_size(im)  # image size
-                segments = []  # instance segments
-                assert (shape[0] > 9) & (shape[1] > 9), f'image size {shape} <10 pixels'
-                assert im.format.lower() in img_formats, f'invalid image format {im.format}'
+                # get the two images
+                imgs = [f for f in os.listdir(im_file) if f.split('.')[-1].lower() in img_formats]
+                for im_ in imgs:
+                    im = Image.open(os.path.join(im_file, im_))
+                    im.verify()  # PIL verify
+                    shape = exif_size(im)  # image size
+                    segments = []  # instance segments
+                    assert (shape[0] > 9) & (shape[1] > 9), f'image size {shape} <10 pixels'
+                    assert im.format.lower() in img_formats, f'invalid image format {im.format}'
 
                 # verify labels
                 if os.path.isfile(lb_file):
@@ -529,7 +536,8 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
         return x
 
     def __len__(self):
-        return len(self.img_files) - self.seq_len
+        # return len(self.img_files) - self.seq_len
+        return len(self.img_files)
 
     # def __iter__(self):
     #     self.count = -1
@@ -563,8 +571,9 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
 
         else:
             # Load image
-            txt_index = index + self.seq_len
-            imgs, (h0, w0), (h, w) = load_images(self, index)
+            # txt_index = index + self.seq_len
+            # imgs, (h0, w0), (h, w) = load_images(self, index)
+            imgs, (h0, w0), (h, w) = load_image(self, index)
 
             # Letterbox
             shape = self.batch_shapes[self.batch[index]] if self.rect else self.img_size  # final letterboxed shape
@@ -574,7 +583,7 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
                 # letterboxed_imgs.append(img)
             shapes = (h0, w0), ((h / h0, w / w0), pad)  # for COCO mAP rescaling
 
-            labels = self.labels[txt_index].copy()
+            labels = self.labels[index].copy()
             if labels.size:  # normalized xywh to pixel xyxy format
                 labels[:, 1:] = xywhn2xyxy(labels[:, 1:], ratio[0] * w, ratio[1] * h, padw=pad[0], padh=pad[1])
 
@@ -606,6 +615,13 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
             labels[:, 1:5] = xyxy2xywh(labels[:, 1:5])  # convert xyxy to xywh
             labels[:, [2, 4]] /= imgs[0].shape[0]  # normalized height 0-1
             labels[:, [1, 3]] /= imgs[0].shape[1]  # normalized width 0-1
+        
+        ## Test last image and its labels bore moving forward
+        ## if aug_index is not None:
+        # for i,im in enumerate(imgs):
+        #     cv2.imwrite(f'/home/dinusha/yolov7/data/test_imgs/test_{i}.jpg', im)
+        #     with open(f'/home/dinusha/yolov7/data/test_imgs/test_{i}.txt', 'w') as f:
+        #         f.write(str(labels) + '\n')
 
         if self.augment:
             # aug_index = index
@@ -626,13 +642,6 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
         labels_out = torch.zeros((nL, 6))
         if nL:
             labels_out[:, 1:] = torch.from_numpy(labels)
-
-        ## Test last image and its labels bore moving forward
-        # if aug_index is not None:
-        #     for i,im in enumerate(imgs):
-        #         cv2.imwrite(f'/home/dinusha/yolov7/data/dataset/test_imgs/test_{i}.jpg', im)
-        #         with open(f'/home/dinusha/yolov7/data/dataset/test_imgs/test_{i}.txt', 'w') as f:
-        #             f.write(str(labels) + '\n')
 
         # Convert
         for i,im in enumerate(imgs):
@@ -680,17 +689,27 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
 
 def load_image(self, index):
     # loads 1 image from dataset, returns img, original hw, resized hw
+    imgs_ = []
+
     img = self.imgs[index]
     if img is None:  # not cached
         path = self.img_files[index]
-        img = cv2.imread(path)  # BGR
-        assert img is not None, 'Image Not Found ' + path
-        h0, w0 = img.shape[:2]  # orig hw
-        r = self.img_size / max(h0, w0)  # resize image to img_size
-        if r != 1:  # always resize down, only resize up if training with augmentation
-            interp = cv2.INTER_AREA if r < 1 and not self.augment else cv2.INTER_LINEAR
-            img = cv2.resize(img, (int(w0 * r), int(h0 * r)), interpolation=interp)
-        return img, (h0, w0), img.shape[:2]  # img, hw_original, hw_resized
+
+        # need to load the image sequence in the directory
+        img_paths = [f for f in os.listdir(path) if f.split('.')[-1].lower() in img_formats]
+        img_paths.sort()
+
+        for im_ in img_paths:
+            img = cv2.imread(os.path.join(path, im_))  # BGR
+            assert img is not None, 'Image Not Found ' + path
+            h0, w0 = img.shape[:2]  # orig hw
+            r = self.img_size / max(h0, w0)  # resize image to img_size
+            if r != 1:  # always resize down, only resize up if training with augmentation
+                interp = cv2.INTER_AREA if r < 1 and not self.augment else cv2.INTER_LINEAR
+                img = cv2.resize(img, (int(w0 * r), int(h0 * r)), interpolation=interp)
+            imgs_.append(img)
+
+        return imgs_, (h0, w0), img.shape[:2]  # img, hw_original, hw_resized
     else:
         return self.imgs[index], self.img_hw0[index], self.img_hw[index]  # img, hw_original, hw_resized
 

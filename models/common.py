@@ -149,6 +149,44 @@ class SeqFusion(nn.Module):
 
     def forward(self, x):        
         return self.cat([self.con_s1(x[0]), self.con_s2(x[1]), self.con_s3(x[2]), self.con_s4(x[3])])
+
+class Conv_(nn.Module):
+  def __init__(self, n_in, n_out):
+    super(Conv_, self).__init__()
+    self.conv = nn.Conv1d(n_in, n_out, kernel_size=1, bias=False)
+    self.bn = nn.BatchNorm1d(n_out)
+
+  def forward(self, x):
+    return self.bn(self.conv(x))
+
+class Attention(nn.Module):
+    "Self attention layer for `n_channels`."
+    def __init__(self, n_channels, e_dim, n_heads=4):
+        super(Attention, self).__init__()
+        self.query, self.key, self.value = [Conv_(n_channels, c) for c in (n_channels,n_channels,n_channels)]
+        self.gamma = nn.Parameter(torch.tensor([0.]))
+        self.multihead_attn = nn.MultiheadAttention(e_dim, n_heads, dropout=0.1, batch_first=True)
+
+    def forward(self, x1, x2):
+        size = x1.size()
+        x1 = x1.view(*size[:2],-1)
+        x2 = x2.view(*size[:2],-1)
+
+        q,k,v = self.query(x1),self.key(x2),self.value(x2)  # cross attention between x1 and x2
+        # print('q', k.shape)
+        # print('k', k.shape)
+        # print('v', k.shape)
+
+        attn_output, attn_output_weights = self.multihead_attn(q, k, v, average_attn_weights=False)
+        attn_output = attn_output + x1
+        attn_output =  (self.gamma * attn_output) + x1
+        # print('attn_output',attn_output.shape)
+        # print('attn_output_weights',attn_output_weights.shape)
+
+        # beta = F.softmax(torch.bmm(q.transpose(1,2), k), dim=1) ## beta is the attaention map
+        # o = self.gamma * torch.bmm(v, beta) + x
+        # print(beta.shape)
+        return attn_output.view(*size).contiguous() # o.view(*size).contiguous()
     
 class RobustConv(nn.Module):
     # Robust convolution (use high kernel size 7-11 for: downsampling and other layers). Train for 300 - 450 epochs.
