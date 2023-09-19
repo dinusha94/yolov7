@@ -1,21 +1,9 @@
-# COCO 2017 dataset http://cocodataset.org
-
-# download command/URL (optional)
-# download: bash ./scripts/get_coco.sh
-
-# train and val data as 1) directory: path/images/, 2) file: path/images.txt, or 3) list: [path1/images/, path2/images/]
-train: /content/yolov7/data/yolov7_seq/train  # 118287 images
-val: /content/yolov7/data/yolov7_seq/val  # 5000 images
-test: /content/yolov7/data/yolov7_seq/test # 20288 of 40670 images, submit to https://competitions.codalab.org/competitions/20794
+train: /home/dinusha/yolov7/data/test
+val: /home/dinusha/yolov7/data/test
+test: /home/dinusha/yolov7/data/test
 
 # number of classes
-nc: 12
+nc: 2
 
 # class names
-names: [ 'S1_P1_in', 'S1_P1_out', 
-'S1_P2_in', 'S1_P2_out', 
-'S1_P3_in', 'S1_P3_out', 
-'S2_P3_in', 'S2_P3_out', 
-'S2_P2_in', 'S2_P2_out', 
-'S2_P1_in', 'S2_P1_out'
-]
+names: [ 'background', 'bottle']

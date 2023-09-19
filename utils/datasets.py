@@ -645,11 +645,17 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
 
         # Convert
         for i,im in enumerate(imgs):
+            # print('0',imgs[i].shape)
             imgs[i] = imgs[i][:, :, ::-1].transpose(2, 0, 1)
+            # print('1',imgs[i].shape)
             imgs[i] = np.ascontiguousarray(imgs[i])
             imgs[i] = torch.from_numpy(imgs[i])
-
-        return torch.stack(imgs, 1), labels_out, self.img_files[index], shapes
+            # imgs[i]= torch.unsqueeze(imgs[i], 0)
+        # print('2',imgs.shape)
+        kk =  torch.stack(imgs, 0)
+        # print('3',kk.shape)
+        # print('----------------------------------------------------')
+        return kk, labels_out, self.img_files[index], shapes
 
     @staticmethod
     def collate_fn(batch):

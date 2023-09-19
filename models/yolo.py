@@ -606,6 +606,7 @@ class Model(nn.Module):
 
         # for the sequence model, we have two inputs, assuming it is a list
         x1, x2 = x_[0], x_[1]
+        print('B',x1.shape, x2.shape)
 
         # process backbone
         for m in self.model:
