@@ -526,6 +526,7 @@ class Model(nn.Module):
             logger.info(f'Overriding model.yaml anchors with anchors={anchors}')
             self.yaml['anchors'] = round(anchors)  # override yaml value
         self.model, self.save = parse_model(deepcopy(self.yaml), ch=[ch])  # model, savelist
+        print('TYPE', type(self.model))
         self.names = [str(i) for i in range(self.yaml['nc'])]  # default names
         # print([x.shape for x in self.forward(torch.zeros(1, ch, 64, 64))])
 
@@ -540,13 +541,14 @@ class Model(nn.Module):
             self._initialize_biases()  # only run once
             # print('Strides: %s' % m.stride.tolist())
         if isinstance(m, IDetect):
-            s = 256  # 2x min stride
-            m.stride = torch.tensor([s / x.shape[-2] for x in self.forward([torch.zeros(1, ch, s, s),torch.zeros(1, ch, s, s),torch.zeros(1, ch, s, s),torch.zeros(1, ch, s, s)]) ])  # forward
+            s = 640  # 2x min stride
+            m.stride = torch.tensor([s / x.shape[-2] for x in self.forward([torch.zeros(1, ch, s, s),torch.zeros(1, ch, s, s)]       )    ])  # forward (train)
+            # m.stride = torch.tensor([s / x.shape[-2] for x in self.forward([torch.zeros(1, ch, s, s),torch.zeros(1, 1024, 20, 20)]       )[0]    ]) # ( test )
             check_anchor_order(m)
             m.anchors /= m.stride.view(-1, 1, 1)
             self.stride = m.stride
             self._initialize_biases()  # only run once
-            # print('Strides: %s' % m.stride.tolist())
+            print('Strides: %s' % m.stride.tolist())
         if isinstance(m, IAuxDetect):
             s = 256  # 2x min stride
             m.stride = torch.tensor([s / x.shape[-2] for x in self.forward(torch.zeros(1, ch, s, s))[:4]])  # forward
@@ -598,37 +600,42 @@ class Model(nn.Module):
         else:
             return self.forward_once(x, profile)  # single-scale inference, train
 
-    def forward_once(self, x, profile=False):
+    def forward_once(self, x_, profile=False, training=True):
         y, dt = [], []  # outputs
+        aux_out = None # feature vector from backbone_aux
+
+        # for the sequence model, we have two inputs, assuming it is a list
+        x1, x2 = x_[0], x_[1]
+
+        # process backbone
         for m in self.model:
-            if m.f != -1:  # if not from previous layer
+            if m.i == 0:
+                x = x1
+            if training and m.i == 51:   # input for first conv layer  in backbone_aux, when training
+                x = x2
+            if not training and m.i == 51:  # input for the Attention layer when testing
+                x = [x, x2]
+
+            if m.f != -1:  # if not from previous layer 
                 x = y[m.f] if isinstance(m.f, int) else [x if j == -1 else y[j] for j in m.f]  # from earlier layers
 
-            if not hasattr(self, 'traced'):
-                self.traced=False
+            # if not isinstance(x, list):
+            #     print(x.shape)
+            # else:
+            #     print(x[0].shape, x[1].shape)
 
-            if self.traced:
-                if isinstance(m, Detect) or isinstance(m, IDetect) or isinstance(m, IAuxDetect) or isinstance(m, IKeypoint):
-                    break
+            x = m(x)  # run, normali for sequencial model (with m.f = -1)
 
-            if profile:
-                c = isinstance(m, (Detect, IDetect, IAuxDetect, IBin))
-                o = thop.profile(m, inputs=(x.copy() if c else x,), verbose=False)[0] / 1E9 * 2 if thop else 0  # FLOPS
-                for _ in range(10):
-                    m(x.copy() if c else x)
-                t = time_synchronized()
-                for _ in range(10):
-                    m(x.copy() if c else x)
-                dt.append((time_synchronized() - t) * 100)
-                print('%10.1f%10.0f%10.1fms %-40s' % (o, m.np, dt[-1], m.type))
-
-            x = m(x)  # run
+            if not training and m.i == 101: # pass the output of the backbone_aux for next inference
+                aux_out = x
             
             y.append(x if m.i in self.save else None)  # save output
 
-        if profile:
-            print('%.1fms total' % sum(dt))
-        return x
+        if training:
+            return x
+        elif not training:
+            return [x, aux_out]
+    
 
     def _initialize_biases(self, cf=None):  # initialize biases into Detect(), cf is class frequency
         # https://arxiv.org/abs/1708.02002 section 3.3
@@ -740,7 +747,7 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
     no = na * (nc + 5)  # number of outputs = anchors * (classes + 5)
 
     layers, save, c2 = [], [], ch[-1]  # layers, savelist, ch out
-    for i, (f, n, m, args) in enumerate(d['backbone'] + d['head']):  # from, number, module, args
+    for i, (f, n, m, args) in enumerate(d['backbone'] + d['backbone_aux'] + d['head']):  # from, number, module, args + d['backbone_aux']
         m = eval(m) if isinstance(m, str) else m  # eval strings
         for j, a in enumerate(args):
             try:
@@ -761,7 +768,10 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
                  Ghost, GhostCSPA, GhostCSPB, GhostCSPC,
                  SwinTransformerBlock, STCSPA, STCSPB, STCSPC,
                  SwinTransformer2Block, ST2CSPA, ST2CSPB, ST2CSPC]:
-            c1, c2 = ch[f], args[0]
+            if i != 51:
+                c1, c2 = ch[f], args[0]
+            else:
+                c1 = 3
             if c2 != no:  # if not output
                 c2 = make_divisible(c2 * gw, 8)
 
@@ -798,8 +808,12 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
             c2 = ch[f] * args[0] ** 2
         elif m is Expand:
             c2 = ch[f] // args[0] ** 2
-        elif m is SeqFusion:
-            c2 = 32
+        elif m is Attention:
+            try:
+                c1, c2 = ch[f[0]], args[0]
+            except TypeError:
+                c1, c2 = ch[f], args[0]
+            args = [c1, c2, *args[1:]]
         else:
             c2 = ch[f]
 
@@ -807,12 +821,13 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
         t = str(m)[8:-2].replace('__main__.', '')  # module type
         np = sum([x.numel() for x in m_.parameters()])  # number params
         m_.i, m_.f, m_.type, m_.np = i, f, t, np  # attach index, 'from' index, type, number params
-        logger.info('%3s%18s%3s%10.0f  %-40s%-30s' % (i, f, n, np, t, args))  # print
+        # logger.info('%3s%18s%3s%10.0f  %-40s%-30s' % (i, f, n, np, t, args))  # print
         save.extend(x % i for x in ([f] if isinstance(f, int) else f) if x != -1)  # append to savelist
         layers.append(m_)
         if i == 0:
             ch = []
         ch.append(c2)
+    
     return nn.Sequential(*layers), sorted(save)
 
 
@@ -825,14 +840,18 @@ if __name__ == '__main__':
     opt.cfg = check_file(opt.cfg)  # check file
     set_logging()
     device = select_device(opt.device)
+    
 
     # Create model
     model = Model(opt.cfg).to(device)
     model.train()
-    
-    if opt.profile:
-        img = torch.rand(1, 3, 640, 640).to(device)
-        y = model(img, profile=True)
+    print('xxxxxxxxxxxxxxxxxxxxx')
+    # if opt.profile:
+    x1 = torch.rand(1, 3, 640, 640).to(device)
+    x2 =  torch.rand(1, 3, 640, 640).to(device) # torch.rand(1, 1024, 20, 20) #
+    img = [x1, x2]
+    print('bbbbbbbbbbbb', img[0].shape, img[1].shape)
+    y = model(img, profile=True)
 
     # Profile
     # img = torch.rand(8 if torch.cuda.is_available() else 1, 3, 640, 640).to(device)
