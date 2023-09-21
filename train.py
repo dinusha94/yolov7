@@ -255,7 +255,7 @@ def train(hyp, opt, device, tb_writer=None):
     # Process 0
     if rank in [-1, 0]:
         testloader = create_dataloader(test_path, imgsz_test, batch_size * 2, gs, opt,  # testloader
-                                       hyp=hyp, cache=opt.cache_images and not opt.notest, rect=True, rank=-1,
+                                       hyp=hyp, cache=opt.cache_images and not opt.notest, rect=opt.rect, rank=-1,
                                        world_size=opt.world_size, workers=opt.workers,
                                        pad=0.5, prefix=colorstr('val: '))[0]
 
@@ -339,7 +339,7 @@ def train(hyp, opt, device, tb_writer=None):
             ni = i + nb * epoch  # number integrated batches (since train start)
             imgs_ = (imgs_.to(device, non_blocking=True).float() / 255.0) #[:,:,-1,:,:]  # uint8 to float32, 0-255 to 0.0-1.0
             imgs = [imgs_[:,i,:,:,:] for i in range(0,2)] 
-            print('AA',imgs[0].shape, imgs_.shape, targets.shape)
+            # print('AA',imgs[0].shape, imgs_.shape, targets.shape)
 
             # Warmup
             if ni <= nw:
@@ -593,8 +593,8 @@ if __name__ == '__main__':
         assert len(opt.cfg) or len(opt.weights), 'either --cfg or --weights must be specified'
         opt.img_size.extend([opt.img_size[-1]] * (2 - len(opt.img_size)))  # extend to 2 sizes (train, test)
         opt.name = 'evolve' if opt.evolve else opt.name
-        opt.save_dir = increment_path(Path(opt.project) / opt.name, exist_ok=opt.exist_ok | opt.evolve)  # increment run
-
+        # opt.save_dir = increment_path(Path(opt.project) / opt.name, exist_ok=opt.exist_ok | opt.evolve)  # increment run
+        opt.save_dir = '/content/drive/MyDrive/shelf/Models/yolov7'
     # DDP mode
     opt.total_batch_size = opt.batch_size
     device = select_device(opt.device, batch_size=opt.batch_size)

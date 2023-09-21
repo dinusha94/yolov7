@@ -1,9 +1,9 @@
-train: /home/dinusha/yolov7/data/test
-val: /home/dinusha/yolov7/data/test
-test: /home/dinusha/yolov7/data/test
+train: /content/yolov7/data/dataset/train
+val: /content/yolov7/data/dataset/val
+test: /content/yolov7/data/dataset/test
 
 # number of classes
-nc: 2
+nc: 1
 
 # class names
-names: [ 'background', 'bottle']
+names: [ 'bottle']

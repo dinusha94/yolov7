@@ -70,8 +70,8 @@ def process_one_catogory(path, clas_idx, global_data_idx, dataset_folder):
 
 
 global_data_idx = 1
-class_id = 1
-catogory_path = '/content/bottles'
-dataset_path = '/content/dataset'
+class_id = 0
+catogory_path = '/content/yolov7/data/dataset/bottle'
+dataset_path = '/content/yolov7/data/dataset/tmp'
 
 process_one_catogory(catogory_path, class_id, global_data_idx, dataset_path)
