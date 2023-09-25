@@ -88,10 +88,40 @@ def train(hyp, opt, device, tb_writer=None):
         model = Model(opt.cfg or ckpt['model'].yaml, ch=3, nc=nc, anchors=hyp.get('anchors')).to(device)  # create
         exclude = ['anchor'] if (opt.cfg or hyp.get('anchors')) and not opt.resume else []  # exclude keys
 
-        state_dict = ckpt['model'].float().state_dict()  # to FP32
+        # state_dict = ckpt['model'].float().state_dict()  # to FP32
+        backbone_dict = ckpt['model'].float().state_dict().copy()
+        aux_backbone_dict = {}
+        head_dict = {}
+        
+        
+        def edit_key(original_key, new_layer_index):
+            elements = original_key.split('.')
+            elements[1] = str(int(elements[1]) + new_layer_index)
+            return '.'.join(elements)
+
+        for i,(k,v) in enumerate(backbone_dict.copy().items()):
+            if i > 245: # 51
+                # 1. remove from the custom_state_dict
+                ret = backbone_dict.pop(k)
+                # 2. change the ids and add to the new head state dict
+                head_dict[edit_key(k, 52)] = ret
+            else:
+                # add it to aux_backbone
+                aux_backbone_dict[edit_key(k, 51)] = v
+
+        state_dict = {}
+        state_dict.update(backbone_dict)
+        state_dict.update(aux_backbone_dict)
+        state_dict.update(head_dict)
+        
+        # for i,(k,v) in enumerate(state_dict.items()):
+        #     print(k)
+
         state_dict = intersect_dicts(state_dict, model.state_dict(), exclude=exclude)  # intersect
 
         model.load_state_dict(state_dict, strict=False)  # load
+
+        # print('Transferred %g/%g items from %s' % (len(state_dict), len(model.state_dict()), weights))
         logger.info('Transferred %g/%g items from %s' % (len(state_dict), len(model.state_dict()), weights))  # report
     else:
         model = Model(opt.cfg, ch=3, nc=nc, anchors=hyp.get('anchors')).to(device)  # create
@@ -593,8 +623,8 @@ if __name__ == '__main__':
         assert len(opt.cfg) or len(opt.weights), 'either --cfg or --weights must be specified'
         opt.img_size.extend([opt.img_size[-1]] * (2 - len(opt.img_size)))  # extend to 2 sizes (train, test)
         opt.name = 'evolve' if opt.evolve else opt.name
-        # opt.save_dir = increment_path(Path(opt.project) / opt.name, exist_ok=opt.exist_ok | opt.evolve)  # increment run
-        opt.save_dir = '/content/drive/MyDrive/shelf/Models/yolov7'
+        opt.save_dir = increment_path(Path(opt.project) / opt.name, exist_ok=opt.exist_ok | opt.evolve)  # increment run
+        # opt.save_dir = '/content/drive/MyDrive/shelf/Models/yolov7'
     # DDP mode
     opt.total_batch_size = opt.batch_size
     device = select_device(opt.device, batch_size=opt.batch_size)
