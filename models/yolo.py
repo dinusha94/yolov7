@@ -605,17 +605,17 @@ class Model(nn.Module):
         aux_out = None # feature vector from backbone_aux
 
         # for the sequence model, we have two inputs, assuming it is a list
-        x1, x2 = x_[0], x_[1]
+        x1, x2 = x_[0], x_[1] # prev frame, current frame
         # print('B',x1.shape, x2.shape)
 
         # process backbone
         for m in self.model:
             if m.i == 0:
-                x = x1
-            if training and m.i == 51:   # input for first conv layer  in backbone_aux, when training
                 x = x2
+            if training and m.i == 51:   # input for first conv layer  in backbone_aux, when training
+                x = x1
             if not training and m.i == 51:  # input for the Attention layer when testing
-                x = [x, x2]
+                x = [x, x1]
 
             if m.f != -1:  # if not from previous layer 
                 x = y[m.f] if isinstance(m.f, int) else [x if j == -1 else y[j] for j in m.f]  # from earlier layers
